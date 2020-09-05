@@ -1,1 +1,1 @@
-web: bin/webapp
+web: bin/notes.anthonyhein.com
