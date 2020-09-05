@@ -1,1 +1,1 @@
-web: webapp
+web: bin/webapp
