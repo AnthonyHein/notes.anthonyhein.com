@@ -1,3 +1,4 @@
+// Author: Anthony Hein
 package main
 
 import (
