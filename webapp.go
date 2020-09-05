@@ -23,6 +23,7 @@ func main() {
 		log.Fatal(err)
 	}
 	http.HandleFunc("/info", info)
+	http.Handle("/", http.FileServer(http.Dir("./notes")))
 	log.Printf("Listening on %s...\n", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		panic(err)
