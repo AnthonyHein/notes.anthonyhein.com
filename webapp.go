@@ -4,7 +4,6 @@ package main
 import (
     "io"
     "net/http"
-    "fmt"
 )
 
 func main() {
