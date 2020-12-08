@@ -1,0 +1,574 @@
+---
+title: 'Final Project: Fig. 3 Replication'
+authors: Anthony Hein, Briana Macedo, Manya Kapoor
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r} 
+# Reading in files
+library(readxl)
+file3 <- read_excel("hCRISPRi_Library.xlsx",col_names = c("ID", "Gene", "TSS", "Protospacer", "Rank", "Predicted Activity Score", "Empirical Score", "Off-Target Stringency", "Predicted Score 2.1", "Sublibrary", "Sublib Half"), na = "nan", skip = 9)
+file7 <- read_excel("hCRISPRi_GrowthPhenotype.xlsx", col_names = c("ID", "T0_R1", "E_R1", "T0_R2", "E_R2", "gamma_R1", "gamma_R2", "gamma_avg"), na = "nan", skip = 2)
+file8 <- read_excel("hCRISPRi_pVals.xlsx", col_names = c("Gene", "R1_Transcripts", "R1_MWP", "R1_AvgP3", "R1_sgRNApass", "R2_Transcripts", "R2_MWP", "R2_AvgP3", "R2_sgRNApass", "Avg_Transcripts", "Avg_MWP", "Avg_AvgP3", "Avg_sgRNApass","Hart_class", "Evers_class", "BCRamp_Wang"), na = "nan", skip = 2)
+```
+
+```{r}
+# Additional Files
+
+Evers <- read_excel("Evers.xlsx")
+CRISPRi_v1 <- read_excel("CRISPRi-v1.xlsx", sheet = "CRISPRi Library", skip=1)
+WangS2 <- read_excel("Wang.xlsx", sheet = "Table S2")
+WangS3 <- read_excel("WangS3.xlsx")
+```
+
+```{r}
+# Standardizing Order
+file3 <- file3[order(file3$ID),]
+file7 <- file7[order(file7$ID),]
+```
+
+```{r}
+# Selecting Top5 most effective sgRNA for the smaller 5 sgRNA/gene library
+file3_Top5 <- file3
+file3_Top5 <- subset(file3, file3$`Sublib Half` == "Top5")
+file7_Top5 <- subset(file7, file7$ID %in% file3_Top5$ID)
+```
+
+```{r}
+# Extracting avg sgRNA counts and growth phenotypes for 10 and 5 sgRNA/gene
+file7_counts <- as.data.frame(matrix(nrow = nrow(file7), ncol = 3))
+file7_Top5_counts <- as.data.frame(matrix(nrow = nrow(file7_Top5), ncol = 3))
+
+file7_counts[,1] <- file7[,1]
+file7_counts[,2] <- rowMeans(cbind(file7[,3] - file7[,2], file7[,5] - file7[,4]))
+file7_counts[,3] <- file7[,8]
+file7_Top5_counts[,1] <- file7_Top5[,1]
+file7_Top5_counts[,2] <- rowMeans(cbind(file7_Top5[,3] - file7_Top5[,2], file7_Top5[,5] - file7_Top5[,4]))
+file7_Top5_counts[,3] <- file7_Top5[,8]
+```
+
+```{r}
+# Extracting predicted activity scores for 10 and 5 sgRNA/gene
+file3_score <- as.data.frame(matrix(nrow = nrow(file3), ncol = 2))
+file3_Top5_score <- as.data.frame(matrix(nrow = nrow(file3_Top5), ncol = 2))
+
+file3_score[,1] <- file3[,1]
+file3_score[,2] <- file3[,9]
+file3_Top5_score[,1] <- file3_Top5[,1]
+file3_Top5_score[,2] <- file3_Top5[,9]
+```
+
+
+```{r}
+# RE to extract predicted activity scores for essential genes (from p_value file 8)
+Evers_essential_genes <- subset(file8, file8$Evers_class == "essential")$Gene
+Evers_compare <- unique(grep(paste("^",Evers_essential_genes,"_",collapse="|",sep=""), file3_Top5_score$V1, value=TRUE))
+Evers_Top5_activity <- file3_Top5_score[match(Evers_compare, file3_Top5_score[,1]),1:2]
+
+# histogram sorting essential genes by predicted activity score
+hist(Evers_Top5_activity[,2], breaks = seq(from = -0.2, to = 1.2, by=0.1), col = "#50839d")
+
+```
+
+```{r}
+# RE to extract growth phenotypes for essential genes (from p_value file 8)
+Evers_Top5_gamma_list <- unique(grep(paste("^",Evers_essential_genes,"_",collapse="|",sep=""), file7_Top5_counts$V1, value=TRUE))
+Evers_Top5_gamma <- file7_Top5_counts[match(Evers_Top5_gamma_list, file7_Top5_counts[,1]),1:3]
+
+# RE to extract growth phenotypes for non-essential genes (from p_value file 8)
+Evers_nonessential_genes <- subset(file8, file8$Evers_class == "non-essential")$Gene
+Evers_Top5_NE_gamma_list <- unique(grep(paste("^",Evers_nonessential_genes,"_",collapse="|",sep=""), file7_Top5_counts$V1, value=TRUE))
+Evers_Top5_NE_gamma <- file7_Top5_counts[match(Evers_Top5_NE_gamma_list, file7_Top5_counts[,1]),1:3]
+
+# Normalizing essential genes by non-essential gene distribution
+Evers_NE_mean <- mean(Evers_Top5_NE_gamma[,3], na.rm = TRUE)
+Evers_NE_SD <- sd(Evers_Top5_NE_gamma[,3], na.rm = TRUE)
+std_Evers_Top5_gamma <- (Evers_Top5_gamma[,3] - Evers_NE_mean)/Evers_NE_SD
+
+# Sorting growth phenotypes by predicted activity scores of those genes
+Evers_cat <- cut(Evers_Top5_activity[,2], seq(-0.2,1.2,0.1), right = FALSE)
+
+# Boxplot to show growth phenotype for each category of predicted activity score
+boxplot(std_Evers_Top5_gamma~Evers_cat, border = "#50839d", col = "white")
+
+
+```
+
+```{r}
+# Plot 3A
+
+x_vals <- c(0.5,2.5,4.5, 6.5, 8.5, 10.5, 12.5,14.5)
+x_lab <- c("-0.2","0.0","0.2","0.4", "0.6", "0.8", "1.0", "1.2")
+y_vals <- c(5,0,-5,-10,-15,-20,-25,-30,-35,-40)
+layout(matrix(c(1,2,2), 3, 1, byrow = TRUE))
+par(mar = c(0.4, 5, 0.1, 0.1))
+hist(Evers_Top5_activity[,2], breaks = seq(from = -0.2, to = 1.2, by=0.1), 
+     col = "#50839d", xlab = c(""), ylab = "Number of\nsgRNAs", ylim = c(0,80),
+     main = c(""), axes=F)
+axis(1,at=x_lab, labels = c("","","","","","","",""))
+axis(2,at=c(0,80))
+par(mar = c(4, 5, 0.9, 0.1))
+boxplot(std_Evers_Top5_gamma~Evers_cat, border = "#50839d", col = "white",
+        xlab = "Predicted activity score", 
+        ylab = "sgRNA Growth Phenotype\n(z-score)",
+        frame = F, axes=F)
+abline(h=0, col = "grey", lty=2)
+axis(1, at=x_vals, labels = x_lab)
+axis(2, at=y_vals)
+
+```
+
+
+
+
+```{r}
+# Fig 3b
+
+#CRISPRi-v1 library (other paper - Gilbert et. al)
+
+v1_list <- unique(grep(paste("^",Evers_essential_genes,"-",collapse="|",sep=""), CRISPRi_v1$`sgRNA ID`, value=TRUE))
+v1_gamma <- CRISPRi_v1[match(v1_list, CRISPRi_v1$`sgRNA ID`),1:4]
+
+v1_NE_list <- unique(grep(paste("^",Evers_nonessential_genes,"-",collapse="|",sep=""), CRISPRi_v1$`sgRNA ID`, value=TRUE))
+v1_NE_gamma <- CRISPRi_v1[match(v1_NE_list, CRISPRi_v1$`sgRNA ID`),1:4]
+
+
+v1_gamma$V5 <- rep(c("E"), each=length(v1_gamma$`sgRNA ID`))
+v1_NE_gamma$V5 <- rep(c("NE"), each=length(v1_NE_gamma$`sgRNA ID`))
+v1_all <- rbind(v1_gamma, v1_NE_gamma)
+v1_all <- v1_all[order(v1_all$`Growth phenotype (gamma)`, na.last = NA),]
+row.names(v1_all) <- c(1:length(v1_all$`sgRNA ID`))
+v1_all$V6 <- c()
+v1_all$V7 <- c()
+colnames(v1_all) <- c("V1", "V2", "V3", "V4", "V5","V6", "V7")
+
+E_count <- 1
+NE_count <- 1
+for(i in 1:length(v1_all$V1)){
+  if(v1_all$V5[i] == "E"){
+    v1_all$V6[i] <- E_count/length(v1_gamma$V5) 
+    if (i == 1){
+      v1_all$V7[i] <- 0
+    }
+    else{
+      v1_all$V7[i] <- v1_all$V7[i-1]
+    }
+    E_count <- E_count+1 
+  }
+  if(v1_all$V5[i] == "NE"){
+    v1_all$V7[i] <- NE_count/length(v1_NE_gamma$V5) 
+    if (i == 1){
+      v1_all$V6[i] <- 0
+    }
+    else{
+      v1_all$V6[i] <- v1_all$V6[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+}
+
+```
+
+```{r}
+
+# For top5 library
+
+Evers_Top5_gamma$V4 <- rep(c("E"), each=length(Evers_Top5_gamma$V1))
+Evers_Top5_NE_gamma$V4 <- rep(c("NE"), each=length(Evers_Top5_NE_gamma$V1))
+Evers_Top5_all <- rbind(Evers_Top5_gamma, Evers_Top5_NE_gamma)
+Evers_Top5_all <- Evers_Top5_all[order(Evers_Top5_all$V3, na.last = NA),]
+row.names(Evers_Top5_all) <- c(1:length(Evers_Top5_all$V1))
+```
+
+```{r}
+E_count <- 1
+NE_count <- 1
+for(i in 1:length(Evers_Top5_all$V1)){
+  if(Evers_Top5_all$V4[i] == "E"){
+    Evers_Top5_all$V5[i] <- E_count/length(Evers_Top5_gamma$V4) 
+    if (i == 1){
+      Evers_Top5_all$V6[i] <- 0
+    }
+    else{
+      Evers_Top5_all$V6[i] <- Evers_Top5_all$V6[i-1]
+    }
+    E_count <- E_count+1 
+  }
+  if(Evers_Top5_all$V4[i] == "NE"){
+    Evers_Top5_all$V6[i] <- NE_count/length(Evers_Top5_NE_gamma$V4) 
+    if (i == 1){
+      Evers_Top5_all$V5[i] <- 0
+    }
+    else{
+      Evers_Top5_all$V5[i] <- Evers_Top5_all$V5[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+}
+
+```
+
+```{r}
+# All 10
+
+Evers_gamma_list <- unique(grep(paste("^",Evers_essential_genes,"_",collapse="|",sep=""), file7_counts$V1, value=TRUE))
+Evers_gamma <- file7_counts[match(Evers_gamma_list, file7_counts[,1]),1:3]
+
+# RE to extract growth phenotypes for non-essential genes (from p_value file 8)
+Evers_NE_gamma_list <- unique(grep(paste("^",Evers_nonessential_genes,"_",collapse="|",sep=""), file7_counts$V1, value=TRUE))
+Evers_NE_gamma <- file7_counts[match(Evers_NE_gamma_list, file7_counts[,1]),1:3]
+```
+
+```{r}
+Evers_gamma$V4 <- rep(c("E"), each=length(Evers_gamma$V1))
+Evers_NE_gamma$V4 <- rep(c("NE"), each=length(Evers_NE_gamma$V1))
+Evers_all <- rbind(Evers_gamma, Evers_NE_gamma)
+Evers_all <- Evers_all[order(Evers_all$V3, na.last = NA),]
+row.names(Evers_all) <- c(1:length(Evers_all$V1))
+```
+
+```{r}
+E_count <- 1
+NE_count <- 1
+for(i in 1:length(Evers_all$V1)){
+  if(Evers_all$V4[i] == "E"){
+    Evers_all$V5[i] <- E_count/length(Evers_gamma$V4) 
+    if (i == 1){
+      Evers_all$V6[i] <- 0
+    }
+    else{
+      Evers_all$V6[i] <- Evers_all$V6[i-1]
+    }
+    E_count <- E_count+1 
+  }
+  if(Evers_all$V4[i] == "NE"){
+    Evers_all$V6[i] <- NE_count/length(Evers_NE_gamma$V4) 
+    if (i == 1){
+      Evers_all$V5[i] <- 0
+    }
+    else{
+      Evers_all$V5[i] <- Evers_all$V5[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+}
+
+par(pty="s", cex=0.8)
+plot(v1_all$V7, v1_all$V6, col = "dark green", type="l", main="sgRNA-based ROC curve", xlab="False positive rate", ylab="True positive rate")
+legend("bottom", legend = c("hCRISPRi v1", "hCRISPRi-v2 10 sgRNAs/gene", "hCRISPRi-v2 5 sgRNAs/gene"), col=c("dark green", "light blue", "dark blue"), box.lty=0, inset =0.02, lty=1)
+lines(Evers_all$V6, Evers_all$V5, col = "light blue")
+lines(Evers_Top5_all$V6, Evers_Top5_all$V5, col = "dark blue")
+
+
+```
+
+
+```{r}
+# Fig 3d
+
+Hart_essential_genes <- subset(file8, file8$Hart_class == "essential")$Gene
+Hart_nonessential_genes <- subset(file8, file8$Hart_class == "non-essential")$Gene
+
+# 5 sgRNA/gene
+gene_Top5_gamma <- c()
+NE_gene_Top5_gamma <- c()
+
+for (i in 1:length(Hart_essential_genes)){
+  gene_Top5_gamma[i] <- mean(file7_Top5_counts[match(unique(grep(paste("^",Hart_essential_genes[i],"_",collapse="|",sep=""), file7_Top5_counts$V1, value=TRUE)), file7_Top5_counts[,1]),3], na.rm = TRUE)
+}
+
+Hart_Top5_gamma <- as.data.frame(cbind(Hart_essential_genes, gene_Top5_gamma))
+colnames(Hart_Top5_gamma) <- c("V1", "V2")
+
+
+for (i in 1:length(Hart_nonessential_genes)){
+  NE_gene_Top5_gamma[i] <- mean(file7_Top5_counts[match(unique(grep(paste("^",Hart_nonessential_genes[i],"_",collapse="|",sep=""), file7_Top5_counts$V1, value=TRUE)), file7_Top5_counts[,1]),3], na.rm = TRUE)
+}
+
+Hart_Top5_NE_gamma <- as.data.frame(cbind(Hart_nonessential_genes, NE_gene_Top5_gamma))
+colnames(Hart_Top5_NE_gamma) <- c("V1", "V2")
+
+Hart_Top5_gamma$V3 <- rep(c("E"), each=length(Hart_Top5_gamma$V2))
+Hart_Top5_NE_gamma$V3 <- rep(c("NE"), each=length(Hart_Top5_NE_gamma$V2))
+Hart_Top5_all <- rbind(Hart_Top5_gamma, Hart_Top5_NE_gamma)
+Hart_Top5_all$V2 <- abs(as.numeric(Hart_Top5_all$V2))
+Hart_Top5_all <- Hart_Top5_all[order(-Hart_Top5_all$V2, na.last = NA),]
+row.names(Hart_Top5_all) <- c(1:length(Hart_Top5_all$V1))
+
+```
+
+```{r}
+E_count <- 1
+NE_count <- 0
+for(i in 1:length(Hart_Top5_all$V1)){
+  if(Hart_Top5_all$V3[i] == "E"){
+    Hart_Top5_all$V4[i] <- E_count/length(Hart_Top5_gamma$V3) 
+    E_count <- E_count+1 
+  }
+  if(Hart_Top5_all$V3[i] == "NE"){
+    if(i==1){
+      Hart_Top5_all$V4[i] <- 0
+    }
+    else{
+      Hart_Top5_all$V4[i] <-  Hart_Top5_all$V4[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+  Hart_Top5_all$V5[i] <- (E_count-1)/(E_count + NE_count - 1)
+}
+
+
+```
+
+```{r}
+# 10 sgRNA/gene
+
+gene_gamma <- c()
+NE_gene_gamma <- c()
+
+for (i in 1:length(Hart_essential_genes)){
+  gene_gamma[i] <- mean(file7_counts[match(unique(grep(paste("^",Hart_essential_genes[i],"_",collapse="|",sep=""), file7_counts$V1, value=TRUE)), file7_counts[,1]),3], na.rm = TRUE)
+}
+
+Hart_gamma <- as.data.frame(cbind(Hart_essential_genes, gene_gamma))
+colnames(Hart_gamma) <- c("V1", "V2")
+
+
+for (i in 1:length(Hart_nonessential_genes)){
+  NE_gene_gamma[i] <- mean(file7_counts[match(unique(grep(paste("^",Hart_nonessential_genes[i],"_",collapse="|",sep=""), file7_counts$V1, value=TRUE)), file7_counts[,1]),3], na.rm = TRUE)
+}
+
+Hart_NE_gamma <- as.data.frame(cbind(Hart_nonessential_genes, NE_gene_gamma))
+colnames(Hart_NE_gamma) <- c("V1", "V2")
+
+Hart_gamma$V3 <- rep(c("E"), each=length(Hart_gamma$V2))
+Hart_NE_gamma$V3 <- rep(c("NE"), each=length(Hart_NE_gamma$V2))
+Hart_all <- rbind(Hart_gamma, Hart_NE_gamma)
+Hart_all$V2 <- abs(as.numeric(Hart_all$V2))
+Hart_all <- Hart_all[order(-Hart_all$V2, na.last = NA),]
+row.names(Hart_all) <- c(1:length(Hart_all$V1))
+
+```
+
+```{r}
+E_count <- 1
+NE_count <- 0
+for(i in 1:length(Hart_all$V1)){
+  if(Hart_all$V3[i] == "E"){
+    Hart_all$V4[i] <- E_count/length(Hart_gamma$V3) 
+    E_count <- E_count+1 
+  }
+  if(Hart_all$V3[i] == "NE"){
+    if(i==1){
+      Hart_all$V4[i] <- 0
+    }
+    else{
+      Hart_all$V4[i] <-  Hart_all$V4[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+  Hart_all$V5[i] <- (E_count-1)/(E_count + NE_count - 1)
+}
+
+```
+
+```{r}
+
+# CRISPRi-v1 dataset (Gilbert et al)
+
+v1_gene_gamma <- c()
+v1_NE_gene_gamma <- c()
+CRISPRi_v1 <- as.data.frame(CRISPRi_v1)
+for (i in 1:length(Hart_essential_genes)){
+  v1_gene_gamma[i] <- mean(CRISPRi_v1[match(unique(grep(paste("^",Hart_essential_genes[i],"-",collapse="|",sep=""), CRISPRi_v1$`sgRNA ID`, value=TRUE)), CRISPRi_v1[,1]),4], na.rm = TRUE)
+}
+
+v1_Hart_gamma <- as.data.frame(cbind(Hart_essential_genes, v1_gene_gamma))
+colnames(v1_Hart_gamma) <- c("V1", "V2")
+
+
+for (i in 1:length(Hart_nonessential_genes)){
+  v1_NE_gene_gamma[i] <- mean(CRISPRi_v1[match(unique(grep(paste("^",Hart_nonessential_genes[i],"-",collapse="|",sep=""), CRISPRi_v1$`sgRNA ID`, value=TRUE)), CRISPRi_v1[,1]),4], na.rm = TRUE)
+}
+
+v1_Hart_NE_gamma <- as.data.frame(cbind(Hart_nonessential_genes, v1_NE_gene_gamma))
+colnames(v1_Hart_NE_gamma) <- c("V1", "V2")
+
+v1_Hart_gamma$V3 <- rep(c("E"), each=length(v1_Hart_gamma$V2))
+v1_Hart_NE_gamma$V3 <- rep(c("NE"), each=length(v1_Hart_NE_gamma$V2))
+v1_Hart_all <- rbind(v1_Hart_gamma, v1_Hart_NE_gamma)
+v1_Hart_all$V2 <- abs(as.numeric(v1_Hart_all$V2))
+v1_Hart_all <- v1_Hart_all[order(-v1_Hart_all$V2, na.last = NA),]
+row.names(v1_Hart_all) <- c(1:length(v1_Hart_all$V1))
+
+E_count <- 1
+NE_count <- 0
+for(i in 1:length(v1_Hart_all$V1)){
+  if(v1_Hart_all$V3[i] == "E"){
+    v1_Hart_all$V4[i] <- E_count/length(v1_Hart_gamma$V3) 
+    E_count <- E_count+1 
+  }
+  if(v1_Hart_all$V3[i] == "NE"){
+    if(i==1){
+      v1_Hart_all$V4[i] <- 0
+    }
+    else{
+      v1_Hart_all$V4[i] <-  v1_Hart_all$V4[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+  v1_Hart_all$V5[i] <- (E_count-1)/(E_count + NE_count - 1)
+}
+
+```
+
+```{r}
+Wang_gene_gamma <- c()
+Wang_NE_gene_gamma <- c()
+WangS3 <- as.data.frame(WangS3)
+for (i in 1:length(Hart_essential_genes)){
+  Wang_gene_gamma[i] <- mean(WangS3[match(unique(Hart_essential_genes[i]), WangS3[,1]),5], na.rm = TRUE)
+}
+
+Wang_Hart_gamma <- as.data.frame(cbind(Hart_essential_genes, Wang_gene_gamma))
+colnames(Wang_Hart_gamma) <- c("V1", "V2")
+
+
+for (i in 1:length(Hart_nonessential_genes)){
+  Wang_NE_gene_gamma[i] <- mean(WangS3[match(unique(Hart_nonessential_genes[i]), WangS3[,1]),5], na.rm = TRUE)
+}
+
+Wang_Hart_NE_gamma <- as.data.frame(cbind(Hart_nonessential_genes, Wang_NE_gene_gamma))
+colnames(Wang_Hart_NE_gamma) <- c("V1", "V2")
+
+Wang_Hart_gamma$V3 <- rep(c("E"), each=length(Wang_Hart_gamma$V2))
+Wang_Hart_NE_gamma$V3 <- rep(c("NE"), each=length(Wang_Hart_NE_gamma$V2))
+Wang_Hart_all <- rbind(Wang_Hart_gamma, Wang_Hart_NE_gamma)
+Wang_Hart_all$V2 <- abs(as.numeric(Wang_Hart_all$V2))
+Wang_Hart_all <- Wang_Hart_all[order(-Wang_Hart_all$V2, na.last = NA),]
+row.names(Wang_Hart_all) <- c(1:length(Wang_Hart_all$V1))
+
+E_count <- 1
+NE_count <- 0
+for(i in 1:length(Wang_Hart_all$V1)){
+  if(Wang_Hart_all$V3[i] == "E"){
+    Wang_Hart_all$V4[i] <- E_count/length(Wang_Hart_gamma$V3) 
+    E_count <- E_count+1 
+  }
+  if(Wang_Hart_all$V3[i] == "NE"){
+    if(i==1){
+      Wang_Hart_all$V4[i] <- 0
+    }
+    else{
+      Wang_Hart_all$V4[i] <-  Wang_Hart_all$V4[i-1]
+    }
+    NE_count <- NE_count+1 
+  }
+  Wang_Hart_all$V5[i] <- (E_count-1)/(E_count + NE_count - 1)
+}
+
+par(pty ="s", cex=0.8)
+plot(v1_Hart_all$V4, v1_Hart_all$V5, col="dark green", type="l", main="Discrimination of essential genes in K562", xlab="Recall", ylab="Precision", ylim=c(0.0,1.0))
+legend("bottomright", legend = c("hCRISPRi v1", "hCRISPRi-v2 10 sgRNAs/gene", "hCRISPRi-v2 5 sgRNAs/gene","CRISPR nuclease 10 sgRNAs/gene"), col=c("dark green", "light blue", "dark blue", 6), box.lty=0, inset =0.02, lty=1)
+lines(Hart_all$V4,Hart_all$V5, col="light blue")
+lines(Hart_Top5_all$V4,Hart_Top5_all$V5,col = "dark blue")
+lines(Wang_Hart_all$V4, Wang_Hart_all$V5, col = 6)
+
+```
+
+
+```{r}
+#Fig 3c
+
+neg_control_sgRNA <- subset(file3, file3$Gene == "negative_control")
+
+neg_control_genes <- as.data.frame(subset(file8, file8$R1_Transcripts == "na"))
+
+NC_mean <- mean(neg_control_genes[,12], na.rm = TRUE)
+NC_SD <- sd(neg_control_genes[,12], na.rm = TRUE)
+
+
+f <- function(x){ifelse(x<0, (-6/((x - NC_mean)/NC_SD)), NA) } #neg x
+g <- function(x){ifelse(x>0, (6/((x - NC_mean)/NC_SD)), NA) } #pos x
+```
+
+```{r}
+MWP_pval <- as.matrix(cbind(file8$Gene, file8$R1_Transcripts, file8$Avg_MWP, file8$Avg_AvgP3,c(1:36905)*NA))
+
+MWP_pval <- cbind(MWP_pval, (as.numeric(file8$Avg_AvgP3)-NC_mean)/NC_SD)
+colnames(MWP_pval) <- c("Gene", "R1","MWP","Growth Phenotype","hCRISPRi-v2","Z-Score")
+
+for(i in 1:36905){
+  if(MWP_pval[i,2] == "na"){
+    if(as.numeric(MWP_pval[i,6])>0){
+      if(as.numeric(MWP_pval[i,3]) < 10^(-6/as.numeric(MWP_pval[i,6])) & as.numeric(MWP_pval[i,3]) > 0){
+        MWP_pval[i,5] <- "NC Gene Passing \nThreshold"
+      }
+      else{
+        MWP_pval[i,5] <- "NC Gene"
+      }
+    }
+    else if(as.numeric(MWP_pval[i,6])<0){
+      if(as.numeric(MWP_pval[i,3]) < 10^(6/as.numeric(MWP_pval[i,6])) & as.numeric(MWP_pval[i,3]) > 0){
+        MWP_pval[i,5] <- "NC Gene Passing \nThreshold"
+      }
+      else{
+        MWP_pval[i,5] <- "NC Gene"
+      }
+    }
+   }
+  else{
+    if(as.numeric(MWP_pval[i,6])>0){
+      if(as.numeric(MWP_pval[i,3]) < 10^(-6/as.numeric(MWP_pval[i,6])) & as.numeric(MWP_pval[i,3]) > 0){
+        MWP_pval[i,5] <- "Gene Passing \nThreshold"
+      }
+      else{
+        MWP_pval[i,5] <- "Gene"
+      }
+    }
+    else if(as.numeric(MWP_pval[i,6])<0){
+      if(as.numeric(MWP_pval[i,3]) < 10^(6/as.numeric(MWP_pval[i,6])) & as.numeric(MWP_pval[i,3]) > 0){
+        MWP_pval[i,5] <- "Gene Passing \nThreshold"
+      }
+      else{
+        MWP_pval[i,5] <- "Gene"
+      }
+    }
+  }
+}
+```
+
+
+```{r}
+
+library(ggplot2)
+x_ticks <- c(-0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1)
+
+
+mycolours <- c("blue","red","dark gray","light gray")
+names(mycolours) <- c("Gene Passing \nThreshold","NC Gene Passing \nThreshold","Gene","NC Gene")
+
+volcano_plot <- ggplot(data=as.data.frame(MWP_pval), aes(x=as.numeric(`Growth Phenotype`), y = -log10(as.numeric(`MWP`)), col = `hCRISPRi-v2`)) + geom_point(size=0.25) 
+
+volcano_plot <- volcano_plot + theme_bw()
+
+volcano_plot <- volcano_plot + scale_x_continuous(expression(paste("Gene Growth Phenotype (average ", gamma, " of 3 most active sgRNAs)")), breaks = x_ticks, labels = x_ticks)
+
+volcano_plot <- volcano_plot + scale_colour_manual(values = mycolours)
+ 
+ 
+volcano_plot <- volcano_plot + coord_cartesian(ylim=c(0,8)) + ylab(expression("-log"[10]*"Mann-Whitney p-value"))
+
+
+volcano_plot <- volcano_plot + geom_function(fun = f, linetype = 2, colour = "black", na.rm=TRUE) 
+volcano_plot <- volcano_plot + geom_function(fun = g, linetype = 2, colour = "black",  na.rm=TRUE)
+
+volcano_plot <- volcano_plot + annotate("text", x = -0.58, y = 1, label= expression("-log"[10]*"p-value x")) + annotate("text", x = -0.53, y = 0.6, label = "phenotype z-score >= 6") 
+
+volcano_plot <- volcano_plot + geom_vline(xintercept = 0, col = "gray")
+
+volcano_plot 
+
+```
